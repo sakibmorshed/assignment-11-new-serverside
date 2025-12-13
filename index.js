@@ -62,6 +62,7 @@ async function run() {
     const favoritesCollection = db.collection("favorites");
     const ordersCollection = db.collection("orders");
     const usersCollection = db.collection("users");
+    const requestsCollection = db.collection("requests");
 
     //users api
     app.post("/users", async (req, res) => {
@@ -82,6 +83,48 @@ async function run() {
     app.get("/users/:email", async (req, res) => {
       const user = await usersCollection.findOne({ email: req.params.email });
       res.send(user);
+    });
+
+    //request to become admin/chef
+    app.post("/requests", async (req, res) => {
+      const request = req.body;
+      request.requestStatus = "pending";
+      request.requestTime = new Date();
+
+      const result = await requestsCollection.insertOne(request);
+      res.send(result);
+    });
+
+    //admin approves/rejects request
+
+    app.patch("/requests/:id", async (req, res) => {
+      const { status } = req.body;
+      const requestId = req.params.id;
+
+      const request = await requestsCollection.findOne({
+        _id: new ObjectId(requestId),
+      });
+      if (!request) {
+        return res.status(404).send({ message: "Request not found" });
+      }
+
+      await requestsCollection.updateOne(
+        { _id: new ObjectId(requestId) },
+        { $set: { requestStatus: status } }
+      );
+
+      if (status === "approved") {
+        const updateData = { role: request.requestType };
+        if (request.requestType === "chef") {
+          const chefId = "chef-" + Math.floor(1000 + Math.random() * 9000);
+          updateData.chefId = chefId;
+        }
+        await usersCollection.updateOne(
+          { email: request.userEmail },
+          { $set: updateData }
+        );
+      }
+      res.send({ message: "Request updated" });
     });
 
     //meals api
