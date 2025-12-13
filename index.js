@@ -71,13 +71,17 @@ async function run() {
       if (exists) {
         return res.send({ message: "User already exists" });
       }
-      user.role = "user";
-      user.status = "active";
-      user.chefId = null;
-      user.createdAt = new Date();
+      const newUser = {
+        name: user.name,
+        email: user.email,
+        photo: user.photo,
+        role: "user",
+        status: "active",
+        createdAt: new Date(),
+      };
 
-      const result = await usersCollection.insertOne(user);
-      req.send(result);
+      const result = await usersCollection.insertOne(newUser);
+      res.send(result);
     });
 
     app.get("/users/:email", async (req, res) => {
@@ -115,15 +119,17 @@ async function run() {
 
       if (status === "approved") {
         const updateData = { role: request.requestType };
+
         if (request.requestType === "chef") {
-          const chefId = "chef-" + Math.floor(1000 + Math.random() * 9000);
-          updateData.chefId = chefId;
+          updateData.chefId = "chef-" + Date.now();
         }
+
         await usersCollection.updateOne(
           { email: request.userEmail },
           { $set: updateData }
         );
       }
+
       res.send({ message: "Request updated" });
     });
 
@@ -241,28 +247,20 @@ async function run() {
       });
     });
 
-    //Get orders for a specific chef
-
     app.get("/orders/chef/:chefId", async (req, res) => {
       const chefId = req.params.chefId;
-      const result = await ordersCollection.find({ chefId }).toArray();
-      res.send(result);
-    });
 
-    //Favorites api
-    app.post("/favorites", async (req, res) => {
-      const fav = req.body;
+      let result = await ordersCollection.find({ chefId }).toArray();
 
-      const exists = await favoritesCollection.findOne({
-        userEmail: fav.userEmail,
-        mealId: fav.mealId,
-      });
-      if (exists) {
-        return res.send({ message: "Already added" });
+      if (result.length === 0) {
+        const chef = await usersCollection.findOne({ chefId });
+        if (chef) {
+          result = await ordersCollection
+            .find({ chefName: chef.name })
+            .toArray();
+        }
       }
 
-      fav.addedTime = new Date();
-      const result = await favoritesCollection.insertOne(fav);
       res.send(result);
     });
 
