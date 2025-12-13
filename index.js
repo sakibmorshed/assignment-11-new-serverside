@@ -61,6 +61,28 @@ async function run() {
     const reviewsCollection = db.collection("reviews");
     const favoritesCollection = db.collection("favorites");
     const ordersCollection = db.collection("orders");
+    const usersCollection = db.collection("users");
+
+    //users api
+    app.post("/users", async (req, res) => {
+      const user = req.body;
+      const exists = await usersCollection.findOne({ email: user.email });
+      if (exists) {
+        return res.send({ message: "User already exists" });
+      }
+      user.role = "user";
+      user.status = "active";
+      user.chefId = null;
+      user.createdAt = new Date();
+
+      const result = await usersCollection.insertOne(user);
+      req.send(result);
+    });
+
+    app.get("/users/:email", async (req, res) => {
+      const user = await usersCollection.findOne({ email: req.params.email });
+      res.send(user);
+    });
 
     //meals api
 
@@ -151,30 +173,10 @@ async function run() {
     });
 
     app.patch("/orders/status/:id", async (req, res) => {
-      const id = req.params.id;
       const { orderStatus } = req.body;
-
       const result = await ordersCollection.updateOne(
-        { _id: new ObjectId(id) },
+        { _id: new ObjectId(req.params.id) },
         { $set: { orderStatus } }
-      );
-      res.send(result);
-    });
-
-    //update Order Status
-    app.patch("/orders/status/:id", async (req, res) => {
-      const id = req.params.id;
-      const { status } = req.body;
-
-      const result = await ordersCollection.updateOne(
-        {
-          _id: new ObjectId(id),
-        },
-        {
-          $set: {
-            orderStatus: status,
-          },
-        }
       );
       res.send(result);
     });
