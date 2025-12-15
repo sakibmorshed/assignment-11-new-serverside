@@ -63,6 +63,7 @@ async function run() {
     const ordersCollection = db.collection("orders");
     const usersCollection = db.collection("users");
     const requestsCollection = db.collection("requests");
+    const paymentsCollection = db.collection("payments");
 
     //users api
     app.post("/users", async (req, res) => {
@@ -89,13 +90,50 @@ async function run() {
       res.send(user);
     });
 
+    app.get("/users", async (req, res) => {
+      const users = await usersCollection.find().toArray();
+      res.send(users);
+    });
+
+    app.patch("/users/fraud/:id", async (req, res) => {
+      const id = req.params.id;
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "fraud" } }
+      );
+      res.send(result);
+    });
+
     //request to become admin/chef
     app.post("/requests", async (req, res) => {
-      const request = req.body;
-      request.requestStatus = "pending";
-      request.requestTime = new Date();
+      const { userId, userName, userEmail, requestType } = req.body;
+      const alreadyRequested = await requestsCollection.findOne({
+        userEmail,
+        requestType,
+        requestStatus: "pending",
+      });
 
-      const result = await requestsCollection.insertOne(request);
+      if (alreadyRequested) {
+        return res.status(400).send({
+          message: "You already sent this request",
+        });
+      }
+
+      const requestDoc = {
+        userId,
+        userName,
+        userEmail,
+        requestType,
+        requestStatus: "pending",
+        requestTime: new Date(),
+      };
+
+      const result = await requestsCollection.insertOne(requestDoc);
+      res.send(result);
+    });
+
+    app.get("/requests", async (req, res) => {
+      const result = await requestsCollection.find().toArray();
       res.send(result);
     });
 
@@ -103,41 +141,67 @@ async function run() {
 
     app.patch("/requests/:id", async (req, res) => {
       const { status } = req.body;
-      const requestId = req.params.id;
+      const id = req.params.id;
 
       const request = await requestsCollection.findOne({
-        _id: new ObjectId(requestId),
+        _id: new ObjectId(id),
       });
-      if (!request) {
+      if (!request)
         return res.status(404).send({ message: "Request not found" });
-      }
-
-      await requestsCollection.updateOne(
-        { _id: new ObjectId(requestId) },
-        { $set: { requestStatus: status } }
-      );
 
       if (status === "approved") {
-        const updateData = { role: request.requestType };
+        const updateUser = {
+          role: request.requestType,
+        };
 
         if (request.requestType === "chef") {
-          updateData.chefId = "chef-" + Date.now();
+          updateUser.chefId = "chef-" + Math.floor(1000 + Math.random() * 9000);
         }
 
         await usersCollection.updateOne(
           { email: request.userEmail },
-          { $set: updateData }
+          { $set: updateUser }
         );
       }
 
-      res.send({ message: "Request updated" });
+      await requestsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { requestStatus: status } }
+      );
+
+      res.send({ success: true });
     });
 
     //meals api
 
-    app.post("/meals", async (req, res) => {
+    app.post("/meals", verifyJWT, async (req, res) => {
       const meal = req.body;
-      const result = await mealsCollection.insertOne(meal);
+
+      const email = req.tokenEmail;
+
+      const chef = await usersCollection.findOne({ email });
+
+      if (!chef || chef.role !== "chef") {
+        return res.status(403).send({
+          message: "Only chefs can create meals",
+        });
+      }
+
+      if (chef.status === "fraud") {
+        return res.status(403).send({
+          message: "Fraud chefs cannot create meals",
+        });
+      }
+
+      const mealData = {
+        ...meal,
+        chefEmail: chef.email,
+        chefName: chef.name,
+        chefId: chef.chefId,
+        createdAt: new Date(),
+      };
+
+      const result = await mealsCollection.insertOne(mealData);
       res.send({ insertedId: result.insertedId });
     });
 
@@ -202,11 +266,32 @@ async function run() {
 
     app.post("/orders", async (req, res) => {
       const order = req.body;
+
+      const user = await usersCollection.findOne({
+        email: order.userEmail,
+      });
+
+      if (user?.status === "fraud") {
+        return res.status(403).send({
+          message: "Fraud users cannot place orders",
+        });
+      }
+
       order.orderTime = new Date();
       order.paymentStatus = "pending";
       order.orderStatus = "pending";
 
       const result = await ordersCollection.insertOne(order);
+      res.send(result);
+    });
+    app.get("/orders/chef/:chefId", async (req, res) => {
+      const chefId = req.params.chefId;
+
+      const result = await ordersCollection
+        .find({ chefId })
+        .sort({ orderedAt: -1 })
+        .toArray();
+
       res.send(result);
     });
 
@@ -215,9 +300,9 @@ async function run() {
 
       const result = await ordersCollection
         .find({ userEmail: email })
-        .sort({ orderTime: -1 })
+        .sort({ orderAt: -1 })
         .toArray();
-
+      console.log("orders found =", result.length);
       res.send(result);
     });
 
@@ -230,16 +315,56 @@ async function run() {
       res.send(result);
     });
 
+    app.patch("/orders/payment/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await ordersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            paymentStatus: "paid",
+            orderStatus: "accepted",
+            paidAt: new Date(),
+          },
+        }
+      );
+
+      res.send(result);
+    });
+
+    //payments
+    app.post("/payments", async (req, res) => {
+      const payment = req.body;
+      payment.paidAt = new Date();
+      const result = await paymentsCollection.insertOne(payment);
+      res.send(result);
+    });
+
+    app.get("/order/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await ordersCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (!result) {
+        return res.status(404).send({ message: "Order not found" });
+      }
+
+      res.send(result);
+    });
+
     //Create-Payment-Intent
 
     app.post("/create-payment-intent", async (req, res) => {
+      console.log("STRIPE KEY =", process.env.STRIPE_SECRET_KEY);
       const { price } = req.body;
       const amount = price * 100;
 
       const paymentIntent = await stripe.paymentIntents.create({
-        amount,
-        Currency: "usd",
-        payment_method_types: ["card"],
+        amount: Math.round(price * 100),
+        currency: "usd",
+        automatic_payment_methods: { enabled: true },
       });
 
       res.send({
@@ -247,20 +372,21 @@ async function run() {
       });
     });
 
-    app.get("/orders/chef/:chefId", async (req, res) => {
-      const chefId = req.params.chefId;
+    app.post("/favorites", async (req, res) => {
+      const fav = req.body;
 
-      let result = await ordersCollection.find({ chefId }).toArray();
+      const exists = await favoritesCollection.findOne({
+        userEmail: fav.userEmail,
+        mealId: fav.mealId,
+      });
 
-      if (result.length === 0) {
-        const chef = await usersCollection.findOne({ chefId });
-        if (chef) {
-          result = await ordersCollection
-            .find({ chefName: chef.name })
-            .toArray();
-        }
+      if (exists) {
+        return res.send({ message: "Already added" });
       }
 
+      fav.addedTime = new Date();
+
+      const result = await favoritesCollection.insertOne(fav);
       res.send(result);
     });
 
