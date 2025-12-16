@@ -206,8 +206,17 @@ async function run() {
     });
 
     app.get("/meals", async (req, res) => {
-      const result = await mealsCollection.find().toArray();
-      res.send(result);
+      const page = Number(req.query.page) || 1;
+      const limit = 10;
+      const skip = (page - 1) * limit;
+
+      const meals = await mealsCollection
+        .find()
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+      const total = await mealsCollection.countDocuments();
+      res.send({ meals, totalPages: Math.ceil(total / limit) });
     });
 
     app.get("/meals/chef/:email", verifyJWT, async (req, res) => {
@@ -433,6 +442,32 @@ async function run() {
         _id: new ObjectId(req.params.id),
       });
       res.send(result);
+    });
+
+    //admin stats
+
+    app.get("/admin/stats", async (req, res) => {
+      const totalUsers = await usersCollection.countDocuments();
+      const pendingOrders = await ordersCollection.countDocuments({
+        orderStatus: { $ne: "delivered" },
+      });
+
+      const deliveredOrders = await ordersCollection.countDocuments({
+        orderStatus: "delivered",
+      });
+
+      const payments = await paymentsCollection.find().toArray();
+      const totalPaymentAmount = payments.reduce(
+        (sum, p) => sum + (p.amount || 0),
+        0
+      );
+
+      res.send({
+        totalUsers,
+        pendingOrders,
+        deliveredOrders,
+        totalPaymentAmount,
+      });
     });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
