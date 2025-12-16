@@ -209,9 +209,40 @@ async function run() {
       const result = await mealsCollection.find().toArray();
       res.send(result);
     });
+
+    app.get("/meals/chef/:email", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+
+      if (req.tokenEmail !== email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      const meals = await mealsCollection.find({ chefEmail: email }).toArray();
+      res.send(meals);
+    });
+
     app.get("/meals/:id", async (req, res) => {
       const id = req.params.id;
       const result = await mealsCollection.findOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
+
+    app.delete("/meals/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+
+      const result = await mealsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
+    app.patch("/meals/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const updatedMeal = req.body;
+
+      const result = await mealsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedMeal }
+      );
       res.send(result);
     });
 
