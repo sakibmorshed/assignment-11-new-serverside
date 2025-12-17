@@ -19,11 +19,7 @@ const app = express();
 // middleware
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "https://b12-m11-session.web.app",
-    ],
+    origin: ["http://localhost:5173", "https://localchefbazaar-c2f05.web.app"],
     credentials: true,
     optionSuccessStatus: 200,
   })
