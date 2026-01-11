@@ -202,17 +202,60 @@ async function run() {
     });
 
     app.get("/meals", async (req, res) => {
-      const page = Number(req.query.page) || 1;
-      const limit = 10;
-      const skip = (page - 1) * limit;
+      try {
+        const page = Number(req.query.page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
 
-      const meals = await mealsCollection
-        .find()
-        .skip(skip)
-        .limit(limit)
-        .toArray();
-      const total = await mealsCollection.countDocuments();
-      res.send({ meals, totalPages: Math.ceil(total / limit) });
+        console.log(`Page: ${page}, Skip: ${skip}, Limit: ${limit}`);
+        console.log("Full query object:", req.query);
+
+        const { search, rating, price, sort } = req.query;
+
+        let query = {};
+
+        // 🔍 Search (foodName or chefName)
+        if (search) {
+          query.$or = [
+            { foodName: { $regex: search, $options: "i" } },
+            { chefName: { $regex: search, $options: "i" } },
+          ];
+        }
+
+        // ⭐ Rating filter
+        if (rating && rating !== "all") {
+          query.rating = { $gte: Number(rating) };
+        }
+
+        // 💰 Price filter
+        if (price && price !== "all") {
+          if (price === "low") query.price = { $lt: 20 };
+          if (price === "medium") query.price = { $gte: 20, $lte: 50 };
+          if (price === "high") query.price = { $gt: 50 };
+        }
+
+        // 🔃 Sorting
+        let sortQuery = {};
+        if (sort === "price-asc") sortQuery.price = 1;
+        if (sort === "price-dsc") sortQuery.price = -1;
+        if (sort === "rating-dsc") sortQuery.rating = -1;
+
+        const meals = await mealsCollection
+          .find(query)
+          .sort(sortQuery)
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        const total = await mealsCollection.countDocuments(query);
+
+        res.send({
+          meals,
+          totalPages: Math.ceil(total / limit),
+        });
+      } catch (err) {
+        res.status(500).send({ message: "Server error" });
+      }
     });
 
     app.get("/meals/chef/:email", verifyJWT, async (req, res) => {
