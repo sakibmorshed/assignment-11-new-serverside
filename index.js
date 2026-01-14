@@ -525,29 +525,13 @@ async function initializeServer() {
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
   } finally {
-    // Ensures that the client will close when you finish/error
+    // Keep alive
   }
 }
 
-// Middleware to ensure DB is connected before processing requests
-app.use(async (req, res, next) => {
-  // Skip middleware for root and health check
-  if (req.path === "/" || req.path === "/health") {
-    return next();
-  }
-
-  try {
-    if (!client.topology || !client.topology.isConnected()) {
-      console.log("Connecting to MongoDB...");
-      await initializeServer();
-    }
-    next();
-  } catch (err) {
-    console.error("DB middleware error:", err);
-    res
-      .status(503)
-      .json({ message: "Database unavailable", error: err.message });
-  }
+// Start initialization in background
+initializeServer().catch((err) => {
+  console.error("Background initialization error:", err);
 });
 
 app.get("/", (req, res) => {
@@ -555,9 +539,8 @@ app.get("/", (req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  const isConnected = client.topology && client.topology.isConnected();
   res.json({
-    status: isConnected ? "ok" : "connecting",
+    status: "ok",
     timestamp: new Date(),
   });
 });
