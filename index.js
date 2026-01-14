@@ -5,32 +5,43 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
 
-console.log("📦 Dependencies loaded");
+console.log("📦 Dependencies loaded at", new Date().toISOString());
 
 const port = process.env.PORT || 3000;
 
+// Initialize Firebase Admin with error logging (non-fatal)
+let firebaseReady = false;
 try {
   console.log("🔑 Initializing Firebase Admin...");
-  const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
-    "utf-8"
-  );
-  const serviceAccount = JSON.parse(decoded);
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-  console.log("✅ Firebase Admin initialized");
+  if (!process.env.FB_SERVICE_KEY) {
+    console.error("❌ FB_SERVICE_KEY not found in environment");
+  } else {
+    const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+      "utf-8"
+    );
+    const serviceAccount = JSON.parse(decoded);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    firebaseReady = true;
+    console.log("✅ Firebase Admin initialized");
+  }
 } catch (err) {
-  console.error("❌ Firebase initialization failed:", err.message);
-  throw err;
+  console.error("❌ Firebase initialization failed:", err.message, err.stack);
 }
 
+// Initialize Stripe (non-fatal if fails)
+let stripe = null;
 try {
   console.log("💳 Initializing Stripe...");
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-  console.log("✅ Stripe initialized");
+  if (!process.env.STRIPE_SECRET_KEY) {
+    console.error("❌ STRIPE_SECRET_KEY not found in environment");
+  } else {
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    console.log("✅ Stripe initialized");
+  }
 } catch (err) {
-  console.error("❌ Stripe initialization failed:", err.message);
-  throw err;
+  console.error("❌ Stripe initialization failed:", err.message, err.stack);
 }
 
 // Create Express app - OUTSIDE try block
@@ -112,7 +123,13 @@ const verifyJWT = async (req, res, next) => {
 
 // Health Check
 app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date() });
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    firebase: firebaseReady ? "✅" : "⚠️",
+    stripe: stripe ? "✅" : "⚠️",
+    mongodb: Object.keys(collections).length > 0 ? "✅" : "pending",
+  });
 });
 
 // Root
