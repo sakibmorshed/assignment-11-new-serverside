@@ -53,6 +53,8 @@ const client = new MongoClient(process.env.MONGODB_URI, {
     strict: true,
     deprecationErrors: true,
   },
+  maxPoolSize: 5,
+  minPoolSize: 1,
 });
 async function run() {
   try {
@@ -522,20 +524,33 @@ async function run() {
   }
 }
 
-async function startServer() {
-  try {
-    await run();
-    app.get("/", (req, res) => {
-      res.send("Hello from Server..");
-    });
+// Initialize routes after DB connection
+let dbReady = false;
+let dbError = null;
 
-    app.listen(port, () => {
-      console.log(`Server is running on port ${port}`);
-    });
-  } catch (err) {
-    console.error("Failed to start server:", err);
-    process.exit(1);
+run()
+  .then(() => {
+    dbReady = true;
+    console.log("✅ Database initialized successfully");
+  })
+  .catch((err) => {
+    dbError = err;
+    console.error("❌ Database initialization failed:", err);
+  });
+
+app.get("/", (req, res) => {
+  res.send("Hello from Server..");
+});
+
+app.use((req, res, next) => {
+  if (!dbReady) {
+    return res
+      .status(503)
+      .json({ message: "Database not ready", error: dbError?.message });
   }
-}
+  next();
+});
 
-startServer();
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
