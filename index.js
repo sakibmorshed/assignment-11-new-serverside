@@ -19,7 +19,11 @@ const app = express();
 // middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://localchefbazaar-c2f05.web.app"],
+    origin: [
+      "http://localhost:5173",
+      "https://localchefbazaar-c2f05.web.app",
+      "https://localchefbazaar-frontend.vercel.app",
+    ],
     credentials: true,
     optionSuccessStatus: 200,
   })
@@ -227,7 +231,7 @@ async function run() {
           query.rating = { $gte: Number(rating) };
         }
 
-        // 💰 Price filter
+        //  Price filter
         if (price && price !== "all") {
           if (price === "low") query.price = { $lt: 20 };
           if (price === "medium") query.price = { $gte: 20, $lte: 50 };
