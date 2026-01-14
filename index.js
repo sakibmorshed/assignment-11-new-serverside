@@ -529,33 +529,39 @@ async function initializeServer() {
   }
 }
 
-// Initialize routes after DB connection
-let dbReady = false;
-let dbError = null;
+// Middleware to ensure DB is connected before processing requests
+app.use(async (req, res, next) => {
+  // Skip middleware for root and health check
+  if (req.path === "/" || req.path === "/health") {
+    return next();
+  }
 
-initializeServer()
-  .then(() => {
-    dbReady = true;
-    console.log("✅ Database initialized successfully");
-  })
-  .catch((err) => {
-    dbError = err;
-    console.error("❌ Database initialization failed:", err);
-  });
+  try {
+    if (!client.topology || !client.topology.isConnected()) {
+      console.log("Connecting to MongoDB...");
+      await initializeServer();
+    }
+    next();
+  } catch (err) {
+    console.error("DB middleware error:", err);
+    res
+      .status(503)
+      .json({ message: "Database unavailable", error: err.message });
+  }
+});
 
 app.get("/", (req, res) => {
   res.send("Hello from Server..");
 });
 
-app.use((req, res, next) => {
-  if (!dbReady) {
-    return res
-      .status(503)
-      .json({ message: "Database not ready", error: dbError?.message });
-  }
-  next();
+app.get("/health", (req, res) => {
+  const isConnected = client.topology && client.topology.isConnected();
+  res.json({
+    status: isConnected ? "ok" : "connecting",
+    timestamp: new Date(),
+  });
 });
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`✅ Server is running on port ${port}`);
 });
