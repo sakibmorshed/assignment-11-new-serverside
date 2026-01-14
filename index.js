@@ -53,8 +53,13 @@ const client = new MongoClient(process.env.MONGODB_URI, {
     strict: true,
     deprecationErrors: true,
   },
-  maxPoolSize: 5,
-  minPoolSize: 1,
+  maxPoolSize: 1,
+  minPoolSize: 0,
+  socketTimeoutMS: 90000,
+  connectTimeoutMS: 90000,
+  serverSelectionTimeoutMS: 90000,
+  retryWrites: true,
+  waitQueueTimeoutMS: 90000,
 });
 async function initializeServer() {
   try {
