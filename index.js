@@ -10,7 +10,9 @@ console.log("✅ All dependencies loaded successfully");
 const port = process.env.PORT || 3000;
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString("utf-8");
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf-8"
+);
 const serviceAccount = JSON.parse(decoded);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -154,7 +156,9 @@ app.get("/meals", async (req, res) => {
 app.get("/meals/:id", async (req, res) => {
   try {
     await initializeDB();
-    const result = await collections.meals.findOne({ _id: new ObjectId(req.params.id) });
+    const result = await collections.meals.findOne({
+      _id: new ObjectId(req.params.id),
+    });
     res.send(result);
   } catch (err) {
     res.status(500).send({ message: "Server error" });
@@ -172,7 +176,9 @@ app.post("/meals", verifyJWT, async (req, res) => {
       return res.status(403).send({ message: "Only chefs can create meals" });
     }
     if (chef.status === "fraud") {
-      return res.status(403).send({ message: "Fraud chefs cannot create meals" });
+      return res
+        .status(403)
+        .send({ message: "Fraud chefs cannot create meals" });
     }
 
     const mealData = {
@@ -193,7 +199,9 @@ app.post("/meals", verifyJWT, async (req, res) => {
 app.delete("/meals/:id", verifyJWT, async (req, res) => {
   try {
     await initializeDB();
-    const result = await collections.meals.deleteOne({ _id: new ObjectId(req.params.id) });
+    const result = await collections.meals.deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
     res.send(result);
   } catch (err) {
     res.status(500).send({ message: "Server error" });
@@ -331,7 +339,9 @@ app.patch("/requests/:id", async (req, res) => {
     const { status } = req.body;
     const id = req.params.id;
 
-    const request = await collections.requests.findOne({ _id: new ObjectId(id) });
+    const request = await collections.requests.findOne({
+      _id: new ObjectId(id),
+    });
     if (!request) return res.status(404).send({ message: "Request not found" });
 
     if (status === "approved") {
@@ -395,7 +405,9 @@ app.get("/reviews/:foodId", async (req, res) => {
 app.get("/my-reviews/:email", async (req, res) => {
   try {
     await initializeDB();
-    const result = await collections.reviews.find({ reviewerEmail: req.params.email }).toArray();
+    const result = await collections.reviews
+      .find({ reviewerEmail: req.params.email })
+      .toArray();
     res.send(result);
   } catch (err) {
     res.status(500).send({ message: "Server error" });
@@ -418,7 +430,9 @@ app.patch("/reviews/:id", async (req, res) => {
 app.delete("/reviews/:id", async (req, res) => {
   try {
     await initializeDB();
-    const result = await collections.reviews.deleteOne({ _id: new ObjectId(req.params.id) });
+    const result = await collections.reviews.deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
     res.send(result);
   } catch (err) {
     res.status(500).send({ message: "Server error" });
@@ -433,7 +447,9 @@ app.post("/orders", async (req, res) => {
     const user = await collections.users.findOne({ email: order.userEmail });
 
     if (user?.status === "fraud") {
-      return res.status(403).send({ message: "Fraud users cannot place orders" });
+      return res
+        .status(403)
+        .send({ message: "Fraud users cannot place orders" });
     }
 
     order.orderTime = new Date();
@@ -508,7 +524,9 @@ app.patch("/orders/payment/:id", async (req, res) => {
 app.get("/order/:id", async (req, res) => {
   try {
     await initializeDB();
-    const result = await collections.orders.findOne({ _id: new ObjectId(req.params.id) });
+    const result = await collections.orders.findOne({
+      _id: new ObjectId(req.params.id),
+    });
     if (!result) {
       return res.status(404).send({ message: "Order not found" });
     }
@@ -543,7 +561,9 @@ app.post("/favorites", async (req, res) => {
 app.get("/favorites/:email", async (req, res) => {
   try {
     await initializeDB();
-    const result = await collections.favorites.find({ userEmail: req.params.email }).toArray();
+    const result = await collections.favorites
+      .find({ userEmail: req.params.email })
+      .toArray();
     res.send(result);
   } catch (err) {
     res.status(500).send({ message: "Server error" });
@@ -553,7 +573,9 @@ app.get("/favorites/:email", async (req, res) => {
 app.delete("/favorites/:id", async (req, res) => {
   try {
     await initializeDB();
-    const result = await collections.favorites.deleteOne({ _id: new ObjectId(req.params.id) });
+    const result = await collections.favorites.deleteOne({
+      _id: new ObjectId(req.params.id),
+    });
     res.send(result);
   } catch (err) {
     res.status(500).send({ message: "Server error" });
@@ -599,7 +621,10 @@ app.get("/admin/stats", async (req, res) => {
       orderStatus: "delivered",
     });
     const payments = await collections.payments.find().toArray();
-    const totalPaymentAmount = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPaymentAmount = payments.reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0
+    );
 
     res.send({
       totalUsers,
