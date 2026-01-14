@@ -56,7 +56,7 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   maxPoolSize: 5,
   minPoolSize: 1,
 });
-async function run() {
+async function initializeServer() {
   try {
     const db = client.db("LocalChefBazaar");
     const mealsCollection = db.collection("meals");
@@ -528,7 +528,7 @@ async function run() {
 let dbReady = false;
 let dbError = null;
 
-run()
+initializeServer()
   .then(() => {
     dbReady = true;
     console.log("✅ Database initialized successfully");
