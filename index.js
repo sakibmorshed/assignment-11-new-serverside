@@ -521,12 +521,21 @@ async function run() {
     // Ensures that the client will close when you finish/error
   }
 }
-run().catch(console.dir);
 
-app.get("/", (req, res) => {
-  res.send("Hello from Server..");
-});
+async function startServer() {
+  try {
+    await run();
+    app.get("/", (req, res) => {
+      res.send("Hello from Server..");
+    });
 
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+    app.listen(port, () => {
+      console.log(`Server is running on port ${port}`);
+    });
+  } catch (err) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  }
+}
+
+startServer();
