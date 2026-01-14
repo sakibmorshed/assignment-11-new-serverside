@@ -1,3 +1,3 @@
-// Re-export the Express app for Vercel
-const app = require("../index.js");
+// This file is imported by Vercel - it must directly export the Express app
+const app = require("../index");
 module.exports = app;
