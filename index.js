@@ -5,6 +5,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
 
+console.log("✅ All dependencies loaded successfully");
+
 const port = process.env.PORT || 3000;
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -611,6 +613,7 @@ app.get("/admin/stats", async (req, res) => {
 });
 
 // Export for Vercel
+console.log("📤 Exporting Express app for Vercel");
 module.exports = app;
 
 // Local development server
