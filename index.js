@@ -12,57 +12,60 @@ const port = process.env.PORT || 3000;
 // Initialize Firebase Admin with error logging (non-fatal)
 let firebaseReady = false;
 try {
-  console.log("🔑 Initializing Firebase Admin...");
+  console.log("Initializing Firebase Admin...");
   if (!process.env.FB_SERVICE_KEY) {
-    console.error("❌ FB_SERVICE_KEY not found in environment");
+    console.error(" FB_SERVICE_KEY not found in environment");
   } else {
-    const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
-      "utf-8"
-    );
-    const serviceAccount = JSON.parse(decoded);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    firebaseReady = true;
-    console.log("✅ Firebase Admin initialized");
+    try {
+      const decoded = Buffer.from(
+        process.env.FB_SERVICE_KEY,
+        "base64"
+      ).toString("utf-8");
+      const serviceAccount = JSON.parse(decoded);
+      if (!admin.apps.length) {
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+      }
+      firebaseReady = true;
+      console.log(" Firebase Admin initialized");
+    } catch (parseErr) {
+      console.error(" Firebase config parse error:", parseErr.message);
+    }
   }
 } catch (err) {
-  console.error("❌ Firebase initialization failed:", err.message, err.stack);
+  console.error(" Firebase initialization failed:", err.message);
 }
 
-// Initialize Stripe (non-fatal if fails)
 let stripe = null;
 try {
-  console.log("💳 Initializing Stripe...");
+  console.log(" Initializing Stripe...");
   if (!process.env.STRIPE_SECRET_KEY) {
-    console.error("❌ STRIPE_SECRET_KEY not found in environment");
+    console.error(" STRIPE_SECRET_KEY not found in environment");
   } else {
     stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    console.log("✅ Stripe initialized");
+    console.log(" Stripe initialized");
   }
 } catch (err) {
-  console.error("❌ Stripe initialization failed:", err.message, err.stack);
+  console.error(" Stripe initialization failed:", err.message, err.stack);
 }
 
-// Create Express app - OUTSIDE try block
 const app = express();
 
-// CORS Configuration
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://localchefbazaar-c2f05.web.app",
-      "https://localchefbazaar-frontend.vercel.app",
-    ],
+    origin: [process.env.CLIENT_DOMAIN, "http://localhost:5173"],
     credentials: true,
-    optionSuccessStatus: 200,
+    optionsSuccessStatus: 200,
   })
 );
 app.use(express.json());
 
-// MongoDB Client Setup
-const client = new MongoClient(process.env.MONGODB_URI, {
+// MongoDB Client Setup - Vercel serverless safe
+if (!process.env.MONGODB_URI) {
+  console.error(" MONGODB_URI not found in environment");
+}
+const client = new MongoClient(process.env.MONGODB_URI || "", {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
@@ -70,24 +73,27 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
   maxPoolSize: 1,
   minPoolSize: 0,
-  socketTimeoutMS: 90000,
-  connectTimeoutMS: 90000,
-  serverSelectionTimeoutMS: 90000,
+  socketTimeoutMS: 45000,
+  connectTimeoutMS: 30000,
+  serverSelectionTimeoutMS: 30000,
   retryWrites: true,
+  maxIdleTimeMS: 60000,
 });
 
 // Global collections reference
 let collections = {};
 
-// Initialize DB Connection
+// Initialize DB Connection - Vercel cold-start safe
+let isConnected = false;
+
 async function initializeDB() {
-  if (Object.keys(collections).length > 0) return;
+  if (isConnected) return;
 
   try {
-    if (!client.topology || !client.topology.isConnected()) {
-      await client.connect();
-      console.log("✅ Connected to MongoDB");
-    }
+    console.log("🔌 Connecting to MongoDB...");
+
+    await client.connect();
+
     const db = client.db("LocalChefBazaar");
     collections = {
       meals: db.collection("meals"),
@@ -98,10 +104,11 @@ async function initializeDB() {
       requests: db.collection("requests"),
       payments: db.collection("payments"),
     };
-    await client.db("admin").command({ ping: 1 });
-    console.log("✅ MongoDB Ping successful");
+
+    isConnected = true;
+    console.log(" MongoDB connected (Vercel-safe)");
   } catch (err) {
-    console.error("❌ Database connection error:", err);
+    console.error(" MongoDB failed:", err.message);
     throw err;
   }
 }
@@ -111,15 +118,18 @@ const verifyJWT = async (req, res, next) => {
   const token = req?.headers?.authorization?.split(" ")[1];
   if (!token) return res.status(401).send({ message: "Unauthorized Access!" });
   try {
+    if (!firebaseReady) {
+      return res.status(503).send({ message: "Auth service unavailable" });
+    }
+
     const decoded = await admin.auth().verifyIdToken(token);
+
     req.tokenEmail = decoded.email;
     next();
   } catch (err) {
     return res.status(401).send({ message: "Unauthorized Access!", err });
   }
 };
-
-// Routes - ALL ROUTES DEFINED HERE
 
 // Health Check
 app.get("/health", (req, res) => {
@@ -501,7 +511,8 @@ app.get("/orders/:email", async (req, res) => {
     await initializeDB();
     const result = await collections.orders
       .find({ userEmail: req.params.email })
-      .sort({ orderAt: -1 })
+      .sort({ orderTime: -1 })
+
       .toArray();
     res.send(result);
   } catch (err) {
@@ -514,7 +525,8 @@ app.get("/orders/chef/:chefId", async (req, res) => {
     await initializeDB();
     const result = await collections.orders
       .find({ chefId: req.params.chefId })
-      .sort({ orderedAt: -1 })
+      .sort({ orderTime: -1 })
+
       .toArray();
     res.send(result);
   } catch (err) {
@@ -630,6 +642,10 @@ app.post("/payments", async (req, res) => {
 
 app.post("/create-payment-intent", async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(503).send({ message: "Stripe not configured" });
+    }
+
     const { price } = req.body;
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(price * 100),
@@ -638,7 +654,7 @@ app.post("/create-payment-intent", async (req, res) => {
     });
     res.send({ clientSecret: paymentIntent.client_secret });
   } catch (err) {
-    res.status(500).send({ message: "Server error" });
+    res.status(500).send({ message: err.message });
   }
 });
 
@@ -655,7 +671,7 @@ app.get("/admin/stats", async (req, res) => {
     });
     const payments = await collections.payments.find().toArray();
     const totalPaymentAmount = payments.reduce(
-      (sum, p) => sum + (p.amount || 0),
+      (sum, p) => sum + Number(p.amount || 0),
       0
     );
 
@@ -677,6 +693,6 @@ module.exports = app;
 // Local development server
 if (require.main === module) {
   app.listen(port, () => {
-    console.log(`✅ Server is running on port ${port}`);
+    console.log(` Server is running on port ${port}`);
   });
 }
